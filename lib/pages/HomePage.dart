@@ -67,22 +67,11 @@ class _HomePageState extends State<HomePage> {
     await prefs.setInt(id, Oldid);
 
     await AndroidAlarmManager.oneShot(
-        new Duration(minutes: 1), Oldid, callback, wakeup: true);
+        meals[0].time, Oldid, callback, wakeup: true);
   }
 
   static void callback() async {
     print("Fired");
-
-    // Get the previous cached count and increment it.
-    final prefs = await SharedPreferences.getInstance();
-    int currentCount = prefs.getInt(countKey)+1;
-    await prefs.setInt(countKey, currentCount);
-    int Oldid = Random().nextInt(pow(2, 31));
-    await prefs.setInt(id, Oldid);
-
-    List<Meal> meals = await FileManager.loadMeals();
-    await AndroidAlarmManager.oneShot( meals[currentCount].time,
-      Oldid, callback, wakeup: true,);
 
     // This will be null if we're running in the background.
     uiSendPort ??= IsolateNameServer.lookupPortByName(isolateName);
@@ -92,6 +81,19 @@ class _HomePageState extends State<HomePage> {
   void fireAlarm() async {
     // TODO: make alarmpage
     print("fireAlarm");
+
+    // Get the previous cached count and increment it.
+    final prefs = await SharedPreferences.getInstance();
+    int currentCount = prefs.getInt(countKey)+1;
+    await prefs.setInt(countKey, currentCount);
+    int Oldid = Random().nextInt(pow(2, 31));
+    await prefs.setInt(id, Oldid);
+
+    if(currentCount < meals.length) {
+      List<Meal> meals = await FileManager.loadMeals();
+      await AndroidAlarmManager.oneShot(meals[currentCount].time,
+        Oldid, callback, wakeup: true,);
+    }
   }
 
   @override
