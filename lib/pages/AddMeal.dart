@@ -16,7 +16,7 @@ class _AddMealState extends State<AddMeal> {
 
   final Map inputs = {
     "name": "",
-    "time": Duration(hours: 0),
+    "time": Duration(hours: 0, minutes: 1),
     "comment" : "",
     "sound": Meal.defaultSound,
     "image" : "",
@@ -135,7 +135,7 @@ class _AddMealState extends State<AddMeal> {
                     spacing: 0,
                     itemHeight: 30,
                     isForce2Digits: true,
-                    time: DateTime(0),
+                    time: DateTime(0,0,0,0,1),
                     minutesInterval: 5,
                     onTimeChange: (DateTime time) { update("time",
                       Duration(hours: time.hour, minutes: time.minute)); },

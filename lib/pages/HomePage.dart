@@ -1,9 +1,14 @@
 import 'dart:io';
-
+import 'dart:isolate';
+import 'dart:ui';
+import 'package:android_alarm_manager/android_alarm_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:get_your_meals/data/FileManager.dart';
 import 'package:get_your_meals/data/Meal.dart';
 import 'package:get_your_meals/menus/Settings.dart';
+import 'package:get_your_meals/styles/Style.dart';
+
+const String portName = "GetYourMealsPort";
 
 /// Represents the home page of getyourmeals
 class HomePage extends StatefulWidget {
@@ -18,6 +23,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
 
   List<Meal> meals;
+  int currentMeal = 0;
+  ReceivePort receivePort = ReceivePort();
 
   _HomePageState(meals){
     this.meals = meals;
@@ -31,6 +38,21 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void startTimer() async {
+    await AndroidAlarmManager.initialize();
+    currentMeal = 0;
+    await AndroidAlarmManager.oneShot(
+        meals[currentMeal].time, currentMeal, (id) => callBack(id), wakeup: true);
+    print(meals[currentMeal].time);
+  }
+
+  static void callBack(int id) async {
+    List<Meal> meals = await FileManager.loadMeals();
+    id++;
+    await AndroidAlarmManager.oneShot( meals[id].time, id, (id) => callBack(id),
+    wakeup: true,);
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -38,6 +60,13 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text("Your Meals"),
         actions: <Widget>[
+          RaisedButton(
+            child: const Text("Start", style: Styles.darkThemeTextSmall,),
+            onPressed: (){
+              startTimer();
+            },
+
+          ),
           PopupMenuButton<Settings>(
             // TODO Popup setting menu
             itemBuilder: (BuildContext context) {  },
@@ -61,7 +90,9 @@ class _HomePageState extends State<HomePage> {
                   ),
                   title: Text(meals[index].name),
                   subtitle: Text(meals[index].comment),
-                  trailing: Text(meals[index].time.toString()),
+                  trailing: CloseButton(
+                    onPressed: () => FileManager.removeMeal(meals[index].name),
+                  )
                 ),
               ),
             );
