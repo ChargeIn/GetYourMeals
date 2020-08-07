@@ -46,10 +46,10 @@ class FileManager{
     final file = await getFile(mealsPath);
     final str = await file.readAsString();
     final lines = str.split(";\n");
-
     file.writeAsStringSync(""); // clear old file
 
     lines.forEach((element) {
+      if(element == "") return;
       if(element.substring(0, element.indexOf(",")) != meal)
         file.writeAsString(element); });
   }
