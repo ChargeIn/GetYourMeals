@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:android_alarm_manager/android_alarm_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get_your_meals/data/FileManager.dart';
 import 'package:get_your_meals/data/Meal.dart';
 import 'package:get_your_meals/menus/Settings.dart';
@@ -27,9 +28,9 @@ SharedPreferences prefs;
 
 /// Represents the home page of getyourmeals
 class HomePage extends StatefulWidget {
-  HomePage({Key key, this.meals}) : super(key: key);
 
-  List<Meal> meals;
+  HomePage({Key key, this.meals}) : super(key: key);
+  final List<Meal> meals;
 
   @override
   _HomePageState createState() => _HomePageState(meals);
@@ -41,6 +42,10 @@ class _HomePageState extends State<HomePage> {
   ReceivePort receivePort = ReceivePort();
   // The background
   static SendPort uiSendPort;
+  FlutterLocalNotificationsPlugin notificationsPlugin = FlutterLocalNotificationsPlugin();
+  AndroidInitializationSettings androidInitSettings;
+  InitializationSettings initSettings;
+
 
   _HomePageState(meals){
     this.meals = meals;
@@ -63,11 +68,11 @@ class _HomePageState extends State<HomePage> {
     if(meals.length == 0) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(countKey, 0);
-    int Oldid = Random().nextInt(pow(2, 31));
-    await prefs.setInt(id, Oldid);
+    int oldID = Random().nextInt(pow(2, 31));
+    await prefs.setInt(id, oldID);
 
     await AndroidAlarmManager.oneShot(
-        meals[0].time, Oldid, callback, wakeup: true);
+        meals[0].time, oldID, callback, wakeup: true);
   }
 
   static void callback() async {
@@ -78,22 +83,23 @@ class _HomePageState extends State<HomePage> {
     uiSendPort?.send(null);
   }
 
-  void fireAlarm() async {
-    // TODO: make alarmpage
+  Future<void> fireAlarm() async {
     print("fireAlarm");
 
     // Get the previous cached count and increment it.
     final prefs = await SharedPreferences.getInstance();
     int currentCount = prefs.getInt(countKey)+1;
     await prefs.setInt(countKey, currentCount);
-    int Oldid = Random().nextInt(pow(2, 31));
-    await prefs.setInt(id, Oldid);
+    int oldID = Random().nextInt(pow(2, 31));
+    await prefs.setInt(id, oldID);
 
     if(currentCount < meals.length) {
       List<Meal> meals = await FileManager.loadMeals();
       await AndroidAlarmManager.oneShot(meals[currentCount].time,
-        Oldid, callback, wakeup: true,);
+        oldID, callback, wakeup: true,);
     }
+
+    _showNotifications(oldID, meals[currentCount-1]);
   }
 
   @override
@@ -109,6 +115,40 @@ class _HomePageState extends State<HomePage> {
     // Register for events from the background isolate. These messages will
     // always coincide with an alarm firing.
     port.listen((_) async => await fireAlarm());
+
+
+    init();
+  }
+
+  void init() async {
+    androidInitSettings = AndroidInitializationSettings('app_icon');
+    initSettings = InitializationSettings(androidInitSettings,null); // TODO: IOS Settings
+    await notificationsPlugin.initialize(initSettings, onSelectNotification: onSelectNotification);
+  }
+
+  void _showNotifications(id, Meal meal) async {
+    await notifications(id, meal);
+  }
+
+  Future<void> notifications(id, Meal meal) async {
+     AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails(
+            'Channel ID',
+            'Channel title',
+            'Channel body',
+            priority: Priority.High,
+            importance: Importance.Max,
+            ticker: 'test' );
+
+     NotificationDetails notificationDetails = NotificationDetails(androidNotificationDetails, null);
+    await notificationsPlugin.show(id, meal.name, meal.comment , notificationDetails);
+  }
+
+  Future<void> onSelectNotification(String payLoad){
+    if(payLoad != null){
+      print(payLoad);
+    }
+    // TODO: on select notification
   }
 
   @override
@@ -178,8 +218,17 @@ class MealListItem extends StatelessWidget {
             ),
             title: Text(meal.name),
             subtitle: Text(meal.comment),
-            trailing: CloseButton(
-              onPressed: removeMeal
+            trailing: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                Text(meal.time.toString(),
+                style: Styles.darkThemeTextSmall,),
+                CloseButton(
+                  onPressed: removeMeal
+                ),
+              ],
             )
         ),
       ),

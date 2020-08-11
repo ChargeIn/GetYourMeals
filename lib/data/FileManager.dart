@@ -42,7 +42,7 @@ class FileManager{
     return file.writeAsString(meal.toCSVString(),mode: FileMode.append);
   }
 
-  static void removeMeal(String meal) async {
+  static Future<void> removeMeal(String meal) async {
     final file = await getFile(mealsPath);
     final str = await file.readAsString();
     final lines = str.split(";\n");
