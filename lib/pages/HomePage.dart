@@ -3,6 +3,7 @@ import 'dart:isolate';
 import 'dart:math';
 import 'dart:ui';
 import 'package:android_alarm_manager/android_alarm_manager.dart';
+import 'package:assets_audio_player/assets_audio_player.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -84,8 +85,11 @@ class _HomePageState extends State<HomePage> {
       // Ensure we have a unique alarm ID.
       Random().nextInt(pow(2, 31)),
       callback,
-      exact: true,
-      wakeup: true,
+      alarmClock : true,
+      allowWhileIdle : true,
+      exact : true,
+      wakeup : true,
+      rescheduleOnReboot : true,
     );
   }
 
