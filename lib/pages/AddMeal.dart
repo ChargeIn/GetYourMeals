@@ -136,7 +136,7 @@ class _AddMealState extends State<AddMeal> {
                     itemHeight: 30,
                     isForce2Digits: true,
                     time: DateTime(0,0,0,0,1),
-                    minutesInterval: 5,
+                    minutesInterval: 1,
                     onTimeChange: (DateTime time) { update("time",
                       Duration(hours: time.hour, minutes: time.minute)); },
                   ),

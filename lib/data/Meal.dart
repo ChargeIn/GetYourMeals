@@ -22,7 +22,7 @@ class Meal {
 
 
   String toCSVString() {
-    return "$name,$time,$comment,$image,$sound,$vibration;\n";
+    return "$name," + time.inSeconds.toString() + ",$comment,$image,$sound,$vibration;\n";
   }
 
 }

@@ -1,10 +1,14 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:get_your_meals/pages/AddMeal.dart';
 import 'package:get_your_meals/pages/HomePage.dart';
 import 'package:get_your_meals/pages/LoadingScreen.dart';
 import 'package:get_your_meals/styles/Style.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+void main() async {
+
   runApp(
       MaterialApp(
         title: 'GetYourMeals',
