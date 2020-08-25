@@ -1,33 +1,12 @@
 import 'dart:io';
-import 'dart:isolate';
-import 'dart:math';
 import 'dart:ui';
-import 'package:android_alarm_manager/android_alarm_manager.dart';
-import 'package:assets_audio_player/assets_audio_player.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get_your_meals/data/FileManager.dart';
 import 'package:get_your_meals/data/Meal.dart';
 import 'package:get_your_meals/menus/Settings.dart';
 import 'package:get_your_meals/styles/Style.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-
-/// The [SharedPreferences] key to access the current meal count.
-const String countKey = 'mealCounter';
-
-/// The [SharedPreferences] key to access the old id.
-const String id = 'id';
-
-/// The name associated with the UI isolate's [SendPort].
-const String isolateName = 'isolate';
-
-/// A port used to communicate from a background isolate to the UI isolate.
-final ReceivePort port = ReceivePort();
-
-/// Global [SharedPreferences] object.
-SharedPreferences prefs;
+import 'package:get_your_meals/utils/NotificationPlugin.dart';
 
 
 /// Represents the home page of getyourmeals
@@ -41,11 +20,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const platform = const MethodChannel("get_your_meals.com/fsalarm");
-
 
   List<Meal> meals;
   String startBtn = "Start";
+  NotificationPlugin notificationPlugin;
 
   _HomePageState(meals) {
     this.meals = meals;
@@ -53,14 +31,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void init() async {
-    // Register the UI isolate's SendPort to allow for communication from the
-    // background isolate.
-    IsolateNameServer.registerPortWithName(
-      port.sendPort,
-      isolateName,
-    );
-    prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(countKey, 0);
+    startBtn = await FileManager.isRestartOverdue() ? "Start" : "Stop";
   }
 
   bool loaded = false;
@@ -71,78 +42,30 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void setAlarms() async {
+    int id = 0;
+    int sec = DateTime.now().millisecondsSinceEpoch;
+    meals.forEach((meal) {
+      notificationPlugin.setNotification(meal, id);
+      sec += meal.time.inMilliseconds;
+      id++;
+    });
+    FileManager.setRestartTime(DateTime.fromMicrosecondsSinceEpoch(sec).toString());
+  }
+
   void update() async {
      meals = await FileManager.loadMeals();
     setState(() {});
-  }
-
-  void setAlarm() async {
-    final prefs = await SharedPreferences.getInstance();
-    int currentCount = prefs.getInt(countKey);
-    await prefs.setInt(countKey, currentCount + 1);
-    await AndroidAlarmManager.oneShot(
-      Duration(seconds: meals[currentCount].time.inSeconds),
-      // Ensure we have a unique alarm ID.
-      Random().nextInt(pow(2, 31)),
-      callback,
-      alarmClock : true,
-      allowWhileIdle : true,
-      exact : true,
-      wakeup : true,
-      rescheduleOnReboot : true,
-    );
-  }
-
-  void resetAlarmBttn(str) async {
-    setState(() {
-      startBtn = str;
-    });
-  }
-
-  Future<void> _callBackAlarm() async {
-    // Ensure we've loaded the updated count from the background isolate.
-    final prefs = await SharedPreferences.getInstance();
-    int currentCount = prefs.getInt(countKey);
-    String value;
-    List<String> map = List<String>();
-    meals.forEach((meal) {
-      map.add(meal.toCSVString());
-    });
-    try {
-      value =
-      await platform.invokeMethod("setAlarm", {"meal": map[currentCount-1]});
-    } catch (e) {
-      print(e);
-    }
-
-    if (currentCount < meals.length) {
-      await setAlarm();
-    } else {
-      await prefs.setInt(countKey, 0);
-      resetAlarmBttn("Start");
-    }
-  }
-
-  // The background
-  static SendPort uiSendPort;
-
-  // The callback for our alarm
-  static Future<void> callback() async {
-
-    // This will be null if we're running in the background.
-    uiSendPort ??= IsolateNameServer.lookupPortByName(isolateName);
-    uiSendPort?.send(null);
   }
 
   @override
   void initState() {
     super.initState();
 
-    AndroidAlarmManager.initialize();
-
-    // Register for events from the background isolate. These messages will
-    // always coincide with an alarm firing.
-    port.listen((_) async => await _callBackAlarm());
+    notificationPlugin = NotificationPlugin();
+    notificationPlugin
+        .setListenerForLowerVersions(onNotificationInLowerVersions);
+    notificationPlugin.setOnNotificationClick(onNotificationClick);
   }
 
   @override
@@ -154,11 +77,16 @@ class _HomePageState extends State<HomePage> {
         actions: <Widget>[
           RaisedButton(
             child: Text(startBtn, style: Styles.darkThemeTextSmall,),
-            onPressed: (){
+            onPressed: () async {
               if(startBtn == "Start") {
-                setAlarm();
+                setAlarms();
                 setState(() {
-                  startBtn = "Done";
+                  startBtn = "Stop";
+                });
+              } else {
+                await notificationPlugin.cancelAllNotification();
+                setState(() {
+                  startBtn = "Start";
                 });
               }
             },
@@ -189,6 +117,15 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  onNotificationInLowerVersions(ReceivedNotification receivedNotification) {
+    print('Notification Received ${receivedNotification.id}');
+  }
+
+  onNotificationClick(String payload) {
+    print('Payload $payload');
+  }
+
 }
 
 

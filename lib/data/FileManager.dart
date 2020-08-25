@@ -9,6 +9,7 @@ class FileManager{
   static const String config = "config.txt";
   static const String mealsPath = "meals.csv";
   static const String pictures = "/pictures";
+  static const String restartTime = "end.txt";
 
   FileManager();
 
@@ -51,7 +52,7 @@ class FileManager{
     lines.forEach((element) {
       if(element == "") return;
       if(element.substring(0, element.indexOf(",")) != meal)
-        file.writeAsString(element); });
+        file.writeAsStringSync(element); });
   }
 
   static Future<String> get _localPath async {
@@ -71,6 +72,19 @@ class FileManager{
     final newPath = path + pictures + "/" + l.last;
     File(imagePath).copy( newPath);
     return newPath;
+  }
+
+  static void setRestartTime(String time) async {
+    final file = await getFile(restartTime);
+    file.writeAsStringSync(time);
+  }
+
+  static Future<bool> isRestartOverdue() async {
+    final file = await getFile(restartTime);
+    if(!await file.exists()) return true;
+    final time = await file.readAsString();
+    final now = DateTime.now();
+    return now.difference(DateTime.parse(time)).isNegative;
   }
 
 }

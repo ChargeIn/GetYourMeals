@@ -4,16 +4,19 @@ import 'dart:isolate';
 import 'dart:math';
 import 'dart:ui';
 import 'package:android_alarm_manager/android_alarm_manager.dart';
+import 'package:assets_audio_player/assets_audio_player.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 import 'package:get_your_meals/data/FileManager.dart';
 import 'package:get_your_meals/data/Meal.dart';
 import 'package:get_your_meals/menus/Settings.dart';
 import 'package:get_your_meals/styles/Style.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 /// The [SharedPreferences] key to access the current meal count.
-const String countKey = 'count';
+const String countKey = 'mealCounter';
 
 /// The [SharedPreferences] key to access the old id.
 const String id = 'id';
@@ -27,6 +30,7 @@ final ReceivePort port = ReceivePort();
 /// Global [SharedPreferences] object.
 SharedPreferences prefs;
 
+
 /// Represents the home page of getyourmeals
 class HomePage extends StatefulWidget {
 
@@ -38,18 +42,26 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  static const platform = const MethodChannel("get_your_meals.com/fsalarm");
+
 
   List<Meal> meals;
-  ReceivePort receivePort = ReceivePort();
-  // The background
-  static SendPort uiSendPort;
-  FlutterLocalNotificationsPlugin notificationsPlugin = FlutterLocalNotificationsPlugin();
-  AndroidInitializationSettings androidInitSettings;
-  InitializationSettings initSettings;
+  String startBtn = "Start";
 
-
-  _HomePageState(meals){
+  _HomePageState(meals) {
     this.meals = meals;
+    init();
+  }
+
+  void init() async {
+    // Register the UI isolate's SendPort to allow for communication from the
+    // background isolate.
+    IsolateNameServer.registerPortWithName(
+      port.sendPort,
+      isolateName,
+    );
+    prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(countKey, 0);
   }
 
   bool loaded = false;
@@ -61,95 +73,77 @@ class _HomePageState extends State<HomePage> {
   }
 
   void update() async {
-     meals = await FileManager.loadMeals();
+    meals = await FileManager.loadMeals();
     setState(() {});
   }
 
-  void startTimer() async {
-    if(meals.length == 0) return;
+  void setAlarm() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(countKey, 0);
-    int oldID = Random().nextInt(pow(2, 31));
-    await prefs.setInt(id, oldID);
-
+    int currentCount = prefs.getInt(countKey);
+    await prefs.setInt(countKey, currentCount + 1);
     await AndroidAlarmManager.oneShot(
-        meals[0].time, oldID, callback, wakeup: true);
+      Duration(seconds: meals[currentCount].time.inSeconds),
+      // Ensure we have a unique alarm ID.
+      Random().nextInt(pow(2, 31)),
+      callback,
+      alarmClock : true,
+      allowWhileIdle : true,
+      exact : true,
+      wakeup : true,
+      rescheduleOnReboot : true,
+    );
   }
 
-  static void callback() async {
-    print("Fired");
+  void resetAlarmBttn(str) async {
+    setState(() {
+      startBtn = str;
+    });
+  }
+
+  Future<void> _callBackAlarm() async {
+    // Ensure we've loaded the updated count from the background isolate.
+    final prefs = await SharedPreferences.getInstance();
+    int currentCount = prefs.getInt(countKey);
+    String value;
+    List<String> map = List<String>();
+    meals.forEach((meal) {
+      map.add(meal.toCSVString());
+    });
+    try {
+      value =
+      await platform.invokeMethod("setAlarm", {"meal": map[currentCount-1]});
+    } catch (e) {
+      print(e);
+    }
+
+    if (currentCount < meals.length) {
+      await setAlarm();
+    } else {
+      await prefs.setInt(countKey, 0);
+      resetAlarmBttn("Start");
+    }
+  }
+
+  // The background
+  static SendPort uiSendPort;
+
+  // The callback for our alarm
+  static Future<void> callback() async {
 
     // This will be null if we're running in the background.
     uiSendPort ??= IsolateNameServer.lookupPortByName(isolateName);
     uiSendPort?.send(null);
   }
 
-  Future<void> fireAlarm() async {
-    print("fireAlarm");
-
-    // Get the previous cached count and increment it.
-    final prefs = await SharedPreferences.getInstance();
-    int currentCount = prefs.getInt(countKey)+1;
-    await prefs.setInt(countKey, currentCount);
-    int oldID = Random().nextInt(pow(2, 31));
-    await prefs.setInt(id, oldID);
-
-    if(currentCount < meals.length) {
-      List<Meal> meals = await FileManager.loadMeals();
-      await AndroidAlarmManager.oneShot(meals[currentCount].time,
-        oldID, callback, wakeup: true,);
-    }
-
-    _showNotifications(oldID, meals[currentCount-1]);
-  }
-
   @override
   void initState() {
     super.initState();
-    AndroidAlarmManager.initialize();
 
-    IsolateNameServer.registerPortWithName(
-      port.sendPort,
-      isolateName,
-    );
+    AndroidAlarmManager.initialize();
 
     // Register for events from the background isolate. These messages will
     // always coincide with an alarm firing.
-    port.listen((_) async => await fireAlarm());
-
-
-    init();
-  }
-
-  void init() async {
-    androidInitSettings = AndroidInitializationSettings('app_icon');
-    initSettings = InitializationSettings(androidInitSettings,null); // TODO: IOS Settings
-    await notificationsPlugin.initialize(initSettings, onSelectNotification: onSelectNotification);
-  }
-
-  void _showNotifications(id, Meal meal) async {
-    await notifications(id, meal);
-  }
-
-  Future<void> notifications(id, Meal meal) async {
-     AndroidNotificationDetails androidNotificationDetails =
-        AndroidNotificationDetails(
-            'Channel ID',
-            'Channel title',
-            'Channel body',
-            priority: Priority.High,
-            importance: Importance.Max,
-            ticker: 'test' );
-
-     NotificationDetails notificationDetails = NotificationDetails(androidNotificationDetails, null);
-    await notificationsPlugin.show(id, meal.name, meal.comment , notificationDetails);
-  }
-
-  Future<void> onSelectNotification(String payLoad){
-    if(payLoad != null){
-      print(payLoad);
-    }
-    // TODO: on select notification
+    port.listen((_) async => await _callBackAlarm());
   }
 
   @override
@@ -160,9 +154,14 @@ class _HomePageState extends State<HomePage> {
         title: const Text("Your Meals"),
         actions: <Widget>[
           RaisedButton(
-            child: const Text("Start", style: Styles.darkThemeTextSmall,),
+            child: Text(startBtn, style: Styles.darkThemeTextSmall,),
             onPressed: (){
-              startTimer();
+              if(startBtn == "Start") {
+                setAlarm();
+                setState(() {
+                  startBtn = "Done";
+                });
+              }
             },
 
           ),
@@ -218,16 +217,17 @@ class MealListItem extends StatelessWidget {
               FileImage(File(meal.image)),
             ),
             title: Text(meal.name),
-            subtitle: Text(meal.comment),
             trailing: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
-                Text(meal.time.toString(),
-                style: Styles.darkThemeTextSmall,),
+                Text((meal.time.inMinutes/60).floor().toString() + " H "
+                    + (meal.time.inMinutes%60).toString() + " Min",
+                  style: Styles.darkThemeTextSmall,),
+                const SizedBox(width: 30,),
                 CloseButton(
-                  onPressed: removeMeal
+                    onPressed: removeMeal
                 ),
               ],
             )
